@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>订单领取上传</title>
+  <style>
+    :root {
+      font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: #202733;
+      background: #eef2f6;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: rgba(255, 255, 255, 0.96);
+      border-bottom: 1px solid #d8dee8;
+      backdrop-filter: blur(10px);
+    }
+    .topbar {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 14px 18px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+    }
+    h1 {
+      margin: 0;
+      font-size: 19px;
+      line-height: 1.2;
+    }
+    .login {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    input[type="text"],
+    input[type="search"] {
+      height: 36px;
+      border: 1px solid #c7cfdb;
+      border-radius: 6px;
+      padding: 0 10px;
+      background: #fff;
+      font-size: 14px;
+      outline: none;
+    }
+    input[type="text"] {
+      width: 180px;
+    }
+    button {
+      height: 36px;
+      border: 1px solid #b8c2d2;
+      background: #fff;
+      color: #1f2937;
+      border-radius: 6px;
+      padding: 0 12px;
+      font-size: 14px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button.primary {
+      background: #0f65d8;
+      border-color: #0f65d8;
+      color: #fff;
+    }
+    button.success {
+      background: #15803d;
+      border-color: #15803d;
+      color: #fff;
+    }
+    button.copy {
+      border-color: #d0d7e2;
+      background: #f8fafc;
+    }
+    button:disabled {
+      opacity: 0.55;
+      cursor: wait;
+    }
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+    .filters {
+      display: grid;
+      grid-template-columns: minmax(180px, 360px) auto 1fr;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .tabs {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      background: #dde5ef;
+      border-radius: 8px;
+      margin-bottom: 14px;
+    }
+    .tab {
+      border: 0;
+      background: transparent;
+      height: 34px;
+      border-radius: 6px;
+      padding: 0 14px;
+    }
+    .tab.active {
+      background: #fff;
+      color: #0f65d8;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14);
+    }
+    .notice {
+      color: #526071;
+      font-size: 14px;
+      min-height: 20px;
+      text-align: right;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid #d8dee8;
+      border-radius: 8px;
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+    .card.done {
+      border-color: #a7d7bb;
+      background: #fbfffd;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .title {
+      font-weight: 700;
+      line-height: 1.45;
+    }
+    .tag {
+      flex: 0 0 auto;
+      border-radius: 999px;
+      padding: 4px 8px;
+      background: #edf2f7;
+      color: #526071;
+      font-size: 12px;
+    }
+    .tag.mine {
+      background: #e8f1ff;
+      color: #0f65d8;
+    }
+    .tag.done {
+      background: #e9f8ef;
+      color: #15803d;
+    }
+    .tag.pool {
+      background: #fff7ed;
+      color: #c2410c;
+    }
+    .info {
+      display: grid;
+      gap: 5px;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .address {
+      color: #344054;
+    }
+    .spec {
+      color: #0f65d8;
+      font-weight: 600;
+    }
+    .echo {
+      display: grid;
+      gap: 6px;
+      padding: 10px;
+      border-radius: 6px;
+      background: #f8fafc;
+      border: 1px solid #e1e7ef;
+      font-size: 13px;
+      color: #475467;
+    }
+    .echo a {
+      color: #0f65d8;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .thumbs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .thumb {
+      display: grid;
+      gap: 5px;
+      color: #667085;
+      font-size: 12px;
+    }
+    .thumb img {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid #d8dee8;
+      background: #fff;
+    }
+    .actions {
+      display: grid;
+      gap: 10px;
+    }
+    .uploads {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .form-grid input,
+    .form-grid select {
+      width: 100%;
+    }
+    .filebox {
+      border: 1px dashed #aeb8c8;
+      background: #f8fafc;
+      border-radius: 6px;
+      padding: 10px;
+      min-height: 74px;
+      display: grid;
+      gap: 7px;
+      align-content: center;
+    }
+    .filebox span {
+      font-size: 13px;
+      color: #475467;
+      font-weight: 600;
+    }
+    input[type="file"] {
+      width: 100%;
+      font-size: 12px;
+    }
+    .empty {
+      background: #fff;
+      border: 1px solid #d8dee8;
+      border-radius: 8px;
+      padding: 38px 18px;
+      text-align: center;
+      color: #667085;
+    }
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(15, 23, 42, 0.5);
+    }
+    .modal.open {
+      display: flex;
+    }
+    .dialog {
+      width: min(420px, 100%);
+      background: #fff;
+      border-radius: 8px;
+      border: 1px solid #d8dee8;
+      padding: 20px;
+      display: grid;
+      gap: 14px;
+      box-shadow: 0 22px 60px rgba(15, 23, 42, 0.22);
+    }
+    .dialog h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+    .dialog p {
+      margin: 0;
+      color: #667085;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .dialog input {
+      width: 100%;
+      height: 42px;
+      font-size: 16px;
+    }
+    .dialog button {
+      height: 42px;
+      width: 100%;
+    }
+    @media (max-width: 860px) {
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+      .login,
+      .filters {
+        grid-template-columns: 1fr;
+        display: grid;
+      }
+      input[type="text"],
+      input[type="search"],
+      button {
+        width: 100%;
+      }
+      .notice {
+        text-align: left;
+      }
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    @media (max-width: 460px) {
+      main {
+        padding: 12px;
+      }
+      .topbar {
+        padding: 12px;
+      }
+      .uploads {
+        grid-template-columns: 1fr;
+      }
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+      .row {
+        display: grid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+    <h1 id="title">订单领取上传</h1>
+      <div class="login">
+        <input id="phone" type="text" inputmode="numeric" placeholder="输入手机号">
+        <button class="primary" id="saveWorker">切换手机号</button>
+      </div>
+    </div>
+  </header>
+  <main>
+    <div class="filters">
+      <input id="search" type="search" placeholder="搜索姓名、电话、地址、商品">
+      <button id="refresh">刷新订单</button>
+      <div class="notice" id="notice"></div>
+    </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="pool">公共订单</button>
+      <button class="tab" data-tab="mine">我的订单</button>
+    </div>
+    <div class="grid" id="orders"></div>
+  </main>
+
+  <div class="modal" id="phoneModal" role="dialog" aria-modal="true" aria-labelledby="phoneModalTitle">
+    <div class="dialog">
+      <h2 id="phoneModalTitle">输入手机号</h2>
+      <p>手机号用于领取订单和查看自己名下的订单。</p>
+      <input id="modalPhone" type="text" inputmode="numeric" placeholder="请输入手机号">
+      <button class="primary" id="modalEnter">进入接单</button>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const pathParts = location.pathname.split('/').filter(Boolean);
+    const shopId = pathParts[0] === 'worker' && pathParts[1] ? pathParts[1] : 'shop-a';
+    const apiBase = `/api/${shopId}`;
+    const state = {
+      phone: localStorage.getItem(`workerPhone:${shopId}`) || '',
+      orders: [],
+      tab: 'pool',
+      busy: false,
+    };
+
+    $('phone').value = state.phone;
+    $('modalPhone').value = state.phone;
+
+    function esc(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[char]);
+    }
+
+    function setNotice(text) {
+      $('notice').textContent = text;
+    }
+
+    function openPhoneModal() {
+      $('modalPhone').value = $('phone').value.trim() || state.phone;
+      $('phoneModal').classList.add('open');
+      setTimeout(() => $('modalPhone').focus(), 0);
+    }
+
+    function closePhoneModal() {
+      $('phoneModal').classList.remove('open');
+    }
+
+    async function enterWithPhone(value) {
+      $('phone').value = value.trim();
+      requirePhone();
+      closePhoneModal();
+      await load();
+    }
+
+    async function api(path, options) {
+      const response = await fetch(path, options);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || '请求失败');
+      return data;
+    }
+
+    function visibleOrders() {
+      const q = $('search').value.trim().toLowerCase();
+      const byTab = state.orders.filter((order) => state.tab === 'mine' ? order.mine : !order.claimed);
+      if (!q) return byTab;
+      return byTab.filter((order) => [
+        order.shouhuoname,
+        order.shouhuotel,
+        order.shouhuodizhi,
+        order.chanpingname,
+        order.type,
+      ].some((value) => String(value || '').toLowerCase().includes(q)));
+    }
+
+    function tag(order) {
+      if (order.status === 'done') return '<span class="tag done">已完成</span>';
+      if (order.mine) return '<span class="tag mine">我已领取</span>';
+      if (order.claimed) return '<span class="tag">已领取</span>';
+      return '<span class="tag pool">待领取</span>';
+    }
+
+    function render() {
+      if (!/^1\d{10}$/.test(state.phone)) {
+        $('orders').innerHTML = '<div class="empty">请先输入手机号后进入</div>';
+        return;
+      }
+
+      const orders = visibleOrders();
+      if (!orders.length) {
+        $('orders').innerHTML = `<div class="empty">${state.tab === 'mine' ? '我的订单暂无数据' : '公共订单暂无可领取订单'}</div>`;
+        return;
+      }
+
+      $('orders').innerHTML = orders.map((order) => {
+        const canUpload = order.mine || !order.claimed;
+        const echoHtml = order.mine ? `
+          <div class="echo">
+            <div>快递单号：${order.trackingNo ? esc(order.trackingNo) : '未填写'}</div>
+            <div class="thumbs">
+              <div class="thumb">
+                <span>订单截图</span>
+                ${order.screenshotOrderUrl ? `<a href="${esc(order.screenshotOrderUrl)}" target="_blank" rel="noopener"><img src="${esc(order.screenshotOrderUrl)}" alt="订单截图"></a>` : '<span>未上传</span>'}
+              </div>
+              <div class="thumb">
+                <span>快递截图</span>
+                ${order.screenshotShippingUrl ? `<a href="${esc(order.screenshotShippingUrl)}" target="_blank" rel="noopener"><img src="${esc(order.screenshotShippingUrl)}" alt="快递截图"></a>` : '<span>未上传</span>'}
+              </div>
+            </div>
+          </div>
+        ` : '';
+        return `
+          <section class="card ${order.status === 'done' ? 'done' : ''}" data-key="${esc(order.key)}">
+            <div class="row">
+              <div class="title">${esc(order.chanpingname)}</div>
+              ${tag(order)}
+            </div>
+            <div class="info">
+              <div><strong>${esc(order.shouhuoname)}</strong> ${esc(order.shouhuotel)}</div>
+              <div class="address">${esc(order.shouhuodizhi)}</div>
+              <div class="spec">${esc(order.type)}</div>
+            </div>
+            <div class="actions">
+              ${echoHtml}
+              <button class="copy" data-copy="${esc(`${order.shouhuoname}\n${order.shouhuotel}\n${order.shouhuodizhi}\n${order.type}`)}">复制发货信息</button>
+              <div class="form-grid">
+                <input class="trackingNo" type="text" placeholder="快递单号" value="${esc(order.trackingNo || '')}">
+              </div>
+              ${order.mine || order.status === 'done' ? '' : `<button class="claim primary" data-key="${esc(order.key)}">领取到我名下</button>`}
+              <div class="uploads">
+                <label class="filebox">
+                  <span>订单截图</span>
+                  <input class="orderImage" type="file" accept="image/*" ${canUpload ? '' : 'disabled'}>
+                </label>
+                <label class="filebox">
+                  <span>快递截图</span>
+                  <input class="shippingImage" type="file" accept="image/*" ${canUpload ? '' : 'disabled'}>
+                </label>
+              </div>
+              <button class="upload success" data-key="${esc(order.key)}" ${canUpload ? '' : 'disabled'}>上传并同步</button>
+            </div>
+          </section>
+        `;
+      }).join('');
+    }
+
+    function requirePhone() {
+      state.phone = $('phone').value.trim();
+      if (!/^1\d{10}$/.test(state.phone)) throw new Error('请先输入正确手机号');
+      localStorage.setItem(`workerPhone:${shopId}`, state.phone);
+      return state.phone;
+    }
+
+    async function load() {
+      const phone = $('phone').value.trim();
+      if (!/^1\d{10}$/.test(phone)) {
+        state.phone = '';
+        state.orders = [];
+        setNotice('请先输入正确手机号');
+        render();
+        return;
+      }
+      state.phone = phone;
+      localStorage.setItem(`workerPhone:${shopId}`, state.phone);
+      const data = await api(`${apiBase}/worker/orders?phone=${encodeURIComponent(phone)}`);
+      state.orders = data.orders;
+      $('title').textContent = '订单领取上传';
+      setNotice(`可见订单 ${data.orders.length} 条`);
+      render();
+    }
+
+    async function claim(card, key) {
+      const phone = requirePhone();
+      setNotice('正在领取...');
+      await api(`${apiBase}/worker/claim`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ key, phone }),
+      });
+      await load();
+      setNotice('领取成功');
+    }
+
+    async function upload(card, key) {
+      const phone = requirePhone();
+      const trackingNo = card.querySelector('.trackingNo').value.trim();
+      const orderImage = card.querySelector('.orderImage').files[0];
+      const shippingImage = card.querySelector('.shippingImage').files[0];
+      if (!trackingNo) throw new Error('请填写快递单号');
+      if (!orderImage || !shippingImage) throw new Error('两张截图都要上传');
+
+      const form = new FormData();
+      form.append('phone', phone);
+      form.append('trackingNo', trackingNo);
+      form.append('key', key);
+      form.append('orderImage', orderImage);
+      form.append('shippingImage', shippingImage);
+
+      setNotice('正在上传并同步上游...');
+      await api(`${apiBase}/worker/upload`, { method: 'POST', body: form });
+      await load();
+      setNotice('上传完成，已同步上游');
+    }
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand('copy');
+      textarea.remove();
+    }
+
+    $('saveWorker').addEventListener('click', async () => {
+      try {
+        openPhoneModal();
+      } catch (error) {
+        setNotice(error.message);
+      }
+    });
+    $('modalEnter').addEventListener('click', async () => {
+      try {
+        await enterWithPhone($('modalPhone').value);
+      } catch (error) {
+        setNotice(error.message);
+        $('modalPhone').focus();
+      }
+    });
+    $('modalPhone').addEventListener('keydown', async (event) => {
+      if (event.key !== 'Enter') return;
+      try {
+        await enterWithPhone($('modalPhone').value);
+      } catch (error) {
+        setNotice(error.message);
+      }
+    });
+    $('refresh').addEventListener('click', () => load().catch((error) => setNotice(error.message)));
+    $('search').addEventListener('input', render);
+    document.querySelectorAll('.tab').forEach((button) => {
+      button.addEventListener('click', () => {
+        state.tab = button.dataset.tab;
+        document.querySelectorAll('.tab').forEach((item) => item.classList.toggle('active', item === button));
+        render();
+      });
+    });
+    $('orders').addEventListener('click', async (event) => {
+      const copyButton = event.target.closest('.copy');
+      const claimButton = event.target.closest('.claim');
+      const uploadButton = event.target.closest('.upload');
+      if (!copyButton && !claimButton && !uploadButton) return;
+
+      try {
+        if (copyButton) {
+          await copyText(copyButton.dataset.copy);
+          setNotice('发货信息已复制');
+        }
+        if (claimButton) await claim(claimButton.closest('.card'), claimButton.dataset.key);
+        if (uploadButton) await upload(uploadButton.closest('.card'), uploadButton.dataset.key);
+      } catch (error) {
+        setNotice(error.message);
+      }
+    });
+
+    render();
+    openPhoneModal();
+  </script>
+</body>
+</html>

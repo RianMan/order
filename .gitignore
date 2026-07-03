@@ -1,0 +1,20 @@
+node_modules/
+npm-debug.log*
+
+# Runtime data
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Captured upstream/debug exports
+orders_*.json
+orders_*.csv
+orders_export.csv
+index2.html
+index2.js
+
+# Local OS/editor files
+.DS_Store
+.env
+

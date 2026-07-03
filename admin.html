@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>订单同步后台</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: #1f2937;
+      background: #f4f6f8;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+    }
+    header {
+      background: #ffffff;
+      border-bottom: 1px solid #d9dee7;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0;
+    }
+    main {
+      padding: 20px 24px 32px;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    button {
+      border: 1px solid #aeb7c6;
+      background: #ffffff;
+      color: #111827;
+      height: 36px;
+      padding: 0 14px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    button.primary {
+      background: #1267d8;
+      border-color: #1267d8;
+      color: #ffffff;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(140px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .stat {
+      background: #ffffff;
+      border: 1px solid #d9dee7;
+      border-radius: 6px;
+      padding: 12px;
+    }
+    .stat span {
+      display: block;
+      color: #667085;
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+    .stat strong {
+      font-size: 22px;
+    }
+    .notice {
+      min-height: 20px;
+      color: #475467;
+      font-size: 14px;
+      margin-bottom: 12px;
+      white-space: pre-wrap;
+    }
+    .table-wrap {
+      background: #ffffff;
+      border: 1px solid #d9dee7;
+      border-radius: 6px;
+      overflow: auto;
+      max-height: calc(100vh - 250px);
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      min-width: 1100px;
+      font-size: 13px;
+    }
+    th,
+    td {
+      border-bottom: 1px solid #e6e9ef;
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      background: #f8fafc;
+      z-index: 1;
+      color: #344054;
+      font-weight: 600;
+    }
+    td.address {
+      max-width: 360px;
+    }
+    .muted {
+      color: #667085;
+    }
+    @media (max-width: 760px) {
+      header,
+      main {
+        padding-left: 14px;
+        padding-right: 14px;
+      }
+      .stats {
+        grid-template-columns: repeat(2, minmax(120px, 1fr));
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 id="title">订单同步后台</h1>
+    <div class="muted" id="updatedAt">未加载</div>
+  </header>
+  <main>
+    <div class="toolbar">
+      <button id="refresh">刷新本地</button>
+      <button id="importUpstream">从上游导入订单</button>
+      <button class="primary" id="syncUpstream">同步上游 type=4</button>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>本地订单</span><strong id="total">0</strong></div>
+      <div class="stat"><span>上次同步上游条数</span><strong id="upstreamRows">-</strong></div>
+      <div class="stat"><span>本次更新本地</span><strong id="updated">-</strong></div>
+      <div class="stat"><span>上游是否含 28630</span><strong id="has28630">-</strong></div>
+    </div>
+    <div class="notice" id="notice"></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>收货人</th>
+            <th>电话</th>
+            <th>地址</th>
+            <th>商品</th>
+            <th>规格</th>
+            <th>状态</th>
+            <th>领取人</th>
+            <th>快递单号</th>
+            <th>快递公司</th>
+            <th>订单截图</th>
+            <th>发货截图</th>
+          </tr>
+        </thead>
+        <tbody id="orders"></tbody>
+      </table>
+    </div>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const buttons = [$('refresh'), $('importUpstream'), $('syncUpstream')];
+    const pathParts = location.pathname.split('/').filter(Boolean);
+    const shopId = pathParts[0] === 'admin' && pathParts[1] ? pathParts[1] : 'shop-a';
+    const apiBase = `/api/${shopId}`;
+
+    function setBusy(busy) {
+      buttons.forEach((button) => button.disabled = busy);
+    }
+
+    function esc(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[char]);
+    }
+
+    async function api(path, options) {
+      const response = await fetch(path, options);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || '请求失败');
+      return data;
+    }
+
+    function render(data) {
+      $('total').textContent = data.total;
+      $('title').textContent = `${data.shop?.name || shopId} 订单同步后台`;
+      $('updatedAt').textContent = data.updatedAt ? `本地更新时间 ${new Date(data.updatedAt).toLocaleString()}` : '未同步';
+      $('upstreamRows').textContent = data.lastSync?.upstreamRows ?? '-';
+      $('updated').textContent = data.lastSync?.updated ?? '-';
+      $('has28630').textContent = data.lastSync ? (data.lastSync.has28630 ? '是' : '否') : '-';
+
+      if (data.lastSync) {
+        const skipped = data.lastSync.skippedNewIds?.length ? `\n上游新 id 未新增：${data.lastSync.skippedNewIds.join(', ')}` : '';
+        const missing = data.lastSync.missingLocalIds?.length ? `\n本地有但上游本次没有：${data.lastSync.missingLocalIds.join(', ')}` : '';
+        $('notice').textContent = `同步只按已有 id 更新，不新增。上游统计：${JSON.stringify(data.lastSync.upstreamCounts)}${skipped}${missing}`;
+      }
+
+      $('orders').innerHTML = data.orders.map((order) => `
+        <tr>
+          <td>${esc(order.id)}</td>
+          <td>${esc(order.shouhuoname)}</td>
+          <td>${esc(order.shouhuotel)}</td>
+          <td class="address">${esc(order.shouhuodizhi)}</td>
+          <td>${esc(order.chanpingname)}</td>
+          <td>${esc(order.type)}</td>
+          <td>${esc(order.status)}</td>
+          <td>${esc(order.worker_phone)}</td>
+          <td>${esc(order.tracking_no)}</td>
+          <td>${esc(order.carrier)}</td>
+          <td>${order.screenshot_order_url ? '已上传' : '<span class="muted">未上传</span>'}</td>
+          <td>${order.screenshot_shipping_url ? '已上传' : '<span class="muted">未上传</span>'}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function load() {
+      const data = await api(`${apiBase}/orders`);
+      render(data);
+    }
+
+    async function run(action, message) {
+      setBusy(true);
+      $('notice').textContent = message;
+      try {
+        const result = await action();
+        $('notice').textContent = `${message}\n完成：${JSON.stringify(result, null, 2)}`;
+        await load();
+      } catch (error) {
+        $('notice').textContent = error.message;
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    $('refresh').addEventListener('click', () => load());
+    $('importUpstream').addEventListener('click', () => run(
+      () => api(`${apiBase}/import-upstream`, { method: 'POST' }),
+      '正在从上游 type=4 导入订单'
+    ));
+    $('syncUpstream').addEventListener('click', () => run(
+      () => api(`${apiBase}/sync-upstream`, { method: 'POST' }),
+      '正在按原始 type=4 同步上游'
+    ));
+
+    load().catch((error) => $('notice').textContent = error.message);
+  </script>
+</body>
+</html>
