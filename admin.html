@@ -199,6 +199,23 @@
       return data;
     }
 
+    function compactIds(ids) {
+      if (!ids?.length) return '';
+      const preview = ids.slice(0, 8).join(', ');
+      return `${ids.length} 个${ids.length > 8 ? `，前几个：${preview}` : `：${preview}`}`;
+    }
+
+    function formatResult(message, result) {
+      const parts = [message, '完成'];
+      if (result.upstreamRows !== undefined) parts.push(`上游 ${result.upstreamRows} 条`);
+      if (result.pendingCount !== undefined) parts.push(`待处理 ${result.pendingCount} 条`);
+      if (result.imported !== undefined) parts.push(`导入 ${result.imported} 条`);
+      if (result.updated !== undefined) parts.push(`更新 ${result.updated} 条`);
+      if (result.skippedNewIds?.length) parts.push(`未新增 ${compactIds(result.skippedNewIds)}`);
+      if (result.missingLocalIds?.length) parts.push(`本地缺失上游 ${compactIds(result.missingLocalIds)}`);
+      return parts.join('，');
+    }
+
     function render(data) {
       $('total').textContent = data.total;
       $('title').textContent = `${data.shop?.name || shopId} 订单同步后台`;
@@ -208,9 +225,14 @@
       $('has28630').textContent = data.lastSync ? (data.lastSync.has28630 ? '是' : '否') : '-';
 
       if (data.lastSync) {
-        const skipped = data.lastSync.skippedNewIds?.length ? `\n上游新 id 未新增：${data.lastSync.skippedNewIds.join(', ')}` : '';
-        const missing = data.lastSync.missingLocalIds?.length ? `\n本地有但上游本次没有：${data.lastSync.missingLocalIds.join(', ')}` : '';
-        $('notice').textContent = `同步只按已有 id 更新，不新增。上游统计：${JSON.stringify(data.lastSync.upstreamCounts)}${skipped}${missing}`;
+        const skipped = compactIds(data.lastSync.skippedNewIds);
+        const missing = compactIds(data.lastSync.missingLocalIds);
+        $('notice').textContent = [
+          '同步只按已有 id 更新，不新增。',
+          `上游 ${data.lastSync.upstreamRows ?? '-'} 条，更新 ${data.lastSync.updated ?? '-'} 条。`,
+          skipped ? `上游新 id 未新增：${skipped}` : '',
+          missing ? `本地有但上游本次没有：${missing}` : '',
+        ].filter(Boolean).join('\n');
       }
 
       $('orders').innerHTML = data.orders.map((order) => `
@@ -241,7 +263,7 @@
       $('notice').textContent = message;
       try {
         const result = await action();
-        $('notice').textContent = `${message}\n完成：${JSON.stringify(result, null, 2)}`;
+        $('notice').textContent = formatResult(message, result);
         await load();
       } catch (error) {
         $('notice').textContent = error.message;
