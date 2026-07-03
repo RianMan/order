@@ -733,7 +733,7 @@ export const server = createServer(async (req, res) => {
   }
 });
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (process.env.ORDER_SYSTEM_NO_LISTEN !== '1') {
   server.listen(PORT, HOST, () => {
     console.log(`Order sync admin: http://${HOST}:${PORT}/admin/shop-a`);
     console.log(`Worker page: http://${HOST}:${PORT}/worker/shop-a`);
