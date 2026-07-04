@@ -261,7 +261,10 @@
           <td>${esc(order.carrier)}</td>
           <td>${order.screenshot_order_url ? '已上传' : '<span class="muted">未上传</span>'}</td>
           <td>${order.screenshot_shipping_url ? '已上传' : '<span class="muted">未上传</span>'}</td>
-          <td><button class="small syncOrder" data-id="${esc(order.id)}" ${order.tracking_no ? '' : 'disabled'}>同步该订单</button></td>
+          <td>
+            <button class="small syncOrder" data-id="${esc(order.id)}" ${order.tracking_no ? '' : 'disabled'}>同步该订单</button>
+            <button class="small releaseOrder" data-id="${esc(order.id)}" ${order.worker_phone || order.status === 'done' || order.tracking_no || order.screenshot_order_url || order.screenshot_shipping_url ? '' : 'disabled'}>释放</button>
+          </td>
         </tr>
       `).join('');
     }
@@ -295,19 +298,23 @@
       '正在按原始 type=4 同步上游'
     ));
     $('orders').addEventListener('click', async (event) => {
-      const button = event.target.closest('.syncOrder');
+      const button = event.target.closest('.syncOrder, .releaseOrder');
       if (!button) return;
+      const isRelease = button.classList.contains('releaseOrder');
+      if (isRelease && !confirm(`确定释放订单 ${button.dataset.id} 回公共池？本地快递单号和图片记录会清空。`)) return;
       button.disabled = true;
       const oldText = button.textContent;
-      button.textContent = '同步中...';
-      $('notice').textContent = `正在同步订单 ${button.dataset.id} 到上游`;
+      button.textContent = isRelease ? '释放中...' : '同步中...';
+      $('notice').textContent = isRelease ? `正在释放订单 ${button.dataset.id}` : `正在同步订单 ${button.dataset.id} 到上游`;
       try {
-        const result = await api(`${apiBase}/sync-order-upstream`, {
+        const result = await api(`${apiBase}/${isRelease ? 'release-order' : 'sync-order-upstream'}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ id: button.dataset.id }),
         });
-        $('notice').textContent = formatResult(`订单 ${button.dataset.id} 已同步到上游`, result);
+        $('notice').textContent = isRelease
+          ? `订单 ${button.dataset.id} 已释放回公共池`
+          : formatResult(`订单 ${button.dataset.id} 已同步到上游`, result);
         await load();
       } catch (error) {
         $('notice').textContent = error.message;

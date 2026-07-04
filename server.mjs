@@ -610,14 +610,36 @@ async function unclaimOrder(shopId, payload) {
   if (!order) throw new Error('订单不存在');
   if (!order.worker_phone) throw new Error('订单还在公共池');
   if (order.worker_phone !== phone) throw new Error('只能撤回自己领取的订单');
-  if (order.status === 'done') throw new Error('已完成订单不能撤回');
+
+  return releaseOrderToPool(shopId, order.id);
+}
+
+function releaseOrderToPool(shopId, id) {
+  const order = getOrder(shopId, id);
+  if (!order) throw new Error('订单不存在');
 
   db.prepare(`
     UPDATE orders
-    SET worker_phone = '', claimed_at = '', status = 'pending', updated_at = ?
+    SET
+      worker_phone = '',
+      claimed_at = '',
+      tracking_no = '',
+      carrier = '',
+      screenshot_order_url = '',
+      screenshot_shipping_url = '',
+      synced_at = '',
+      status = 'pending',
+      updated_at = ?
     WHERE shop_id = ? AND id = ?
-  `).run(now(), shopId, order.id);
-  return { ok: true };
+  `).run(now(), shopId, id);
+  return { ok: true, id, releasedFrom: order.status || 'pending' };
+}
+
+async function releaseOrderByAdmin(shopId, payload) {
+  shopOrThrow(shopId);
+  const id = String(payload.id ?? '').trim();
+  if (!id) throw new Error('缺少订单 id');
+  return releaseOrderToPool(shopId, id);
 }
 
 async function uploadWorkerScreenshots(shopId, req) {
@@ -831,6 +853,15 @@ export const server = createServer(async (req, res) => {
           return;
         }
         await sendJson(res, 200, await syncOrderDataToUpstream(route.shopId, await readJsonBody(req)));
+        return;
+      }
+
+      if (req.method === 'POST' && route.action === 'release-order') {
+        if (!isAdminAuthed(req)) {
+          await sendJson(res, 401, { error: '请先登录后台' });
+          return;
+        }
+        await sendJson(res, 200, await releaseOrderByAdmin(route.shopId, await readJsonBody(req)));
         return;
       }
 

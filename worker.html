@@ -530,7 +530,7 @@
                 <input class="trackingNo" type="text" placeholder="快递单号" value="${esc(order.trackingNo || '')}">
               </div>
               ${order.mine || order.status === 'done' ? '' : `<button type="button" class="claim primary" data-key="${esc(order.key)}">领取到我名下</button>`}
-              ${order.mine && order.status !== 'done' ? `<button type="button" class="unclaim danger" data-key="${esc(order.key)}">撤回公共池</button>` : ''}
+              ${order.mine ? `<button type="button" class="unclaim danger" data-key="${esc(order.key)}">撤回公共池</button>` : ''}
               <div class="uploads">
                 <label class="filebox">
                   <span>订单截图</span>
@@ -588,7 +588,7 @@
 
     async function unclaim(card, key) {
       const phone = requirePhone();
-      if (!confirm('确定把这个订单撤回公共池？撤回后别人可以领取。')) return;
+      if (!confirm('确定把这个订单撤回公共池？撤回后别人可以领取，本地快递单号和图片记录会清空。')) return;
       setNotice('正在撤回...');
       await api(`${apiBase}/worker/unclaim`, {
         method: 'POST',
