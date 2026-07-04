@@ -82,6 +82,11 @@
       border-color: #d0d7e2;
       background: #f8fafc;
     }
+    button.danger {
+      border-color: #dc2626;
+      background: #fff;
+      color: #b91c1c;
+    }
     button:disabled {
       opacity: 0.55;
       cursor: wait;
@@ -498,6 +503,7 @@
                 <input class="trackingNo" type="text" placeholder="快递单号" value="${esc(order.trackingNo || '')}">
               </div>
               ${order.mine || order.status === 'done' ? '' : `<button class="claim primary" data-key="${esc(order.key)}">领取到我名下</button>`}
+              ${order.mine && order.status !== 'done' ? `<button class="unclaim danger" data-key="${esc(order.key)}">撤回公共池</button>` : ''}
               <div class="uploads">
                 <label class="filebox">
                   <span>订单截图</span>
@@ -550,6 +556,19 @@
       });
       await load();
       setNotice('领取成功');
+    }
+
+    async function unclaim(card, key) {
+      const phone = requirePhone();
+      if (!confirm('确定把这个订单撤回公共池？撤回后别人可以领取。')) return;
+      setNotice('正在撤回...');
+      await api(`${apiBase}/worker/unclaim`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ key, phone }),
+      });
+      await load();
+      setNotice('已撤回公共池');
     }
 
     async function upload(card, key) {
@@ -625,8 +644,9 @@
     $('orders').addEventListener('click', async (event) => {
       const copyButton = event.target.closest('.copy');
       const claimButton = event.target.closest('.claim');
+      const unclaimButton = event.target.closest('.unclaim');
       const uploadButton = event.target.closest('.upload');
-      if (!copyButton && !claimButton && !uploadButton) return;
+      if (!copyButton && !claimButton && !unclaimButton && !uploadButton) return;
 
       try {
         if (copyButton) {
@@ -634,6 +654,7 @@
           setNotice('发货信息已复制');
         }
         if (claimButton) await claim(claimButton.closest('.card'), claimButton.dataset.key);
+        if (unclaimButton) await unclaim(unclaimButton.closest('.card'), unclaimButton.dataset.key);
         if (uploadButton) await upload(uploadButton.closest('.card'), uploadButton.dataset.key);
       } catch (error) {
         setNotice(error.message);

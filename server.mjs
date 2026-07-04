@@ -515,6 +515,26 @@ async function claimOrder(shopId, payload) {
   return { ok: true };
 }
 
+async function unclaimOrder(shopId, payload) {
+  const phone = String(payload.phone ?? '').trim();
+  const key = String(payload.key ?? '').trim();
+  if (!/^1\d{10}$/.test(phone)) throw new Error('请填写正确手机号');
+  if (!key) throw new Error('缺少订单标识');
+
+  const order = findByKey(shopId, key);
+  if (!order) throw new Error('订单不存在');
+  if (!order.worker_phone) throw new Error('订单还在公共池');
+  if (order.worker_phone !== phone) throw new Error('只能撤回自己领取的订单');
+  if (order.status === 'done') throw new Error('已完成订单不能撤回');
+
+  db.prepare(`
+    UPDATE orders
+    SET worker_phone = '', claimed_at = '', status = 'pending', updated_at = ?
+    WHERE shop_id = ? AND id = ?
+  `).run(now(), shopId, order.id);
+  return { ok: true };
+}
+
 async function uploadWorkerScreenshots(shopId, req) {
   const shop = shopOrThrow(shopId);
   assertShopConfigured(shop);
@@ -718,6 +738,11 @@ export const server = createServer(async (req, res) => {
 
       if (req.method === 'POST' && route.action === 'worker/claim') {
         await sendJson(res, 200, await claimOrder(route.shopId, await readJsonBody(req)));
+        return;
+      }
+
+      if (req.method === 'POST' && route.action === 'worker/unclaim') {
+        await sendJson(res, 200, await unclaimOrder(route.shopId, await readJsonBody(req)));
         return;
       }
 
