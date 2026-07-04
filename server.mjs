@@ -553,26 +553,38 @@ async function uploadWorkerScreenshots(shopId, req) {
   if (!order) throw new Error('订单不存在');
   if (order.worker_phone && order.worker_phone !== phone) throw new Error('订单已被其他手机号领取');
 
-  if (!order.worker_phone) await claimOrder(shopId, { key, phone });
-  await validateUpstreamOrder(shop, order.id);
-  const screenshotOrderUrl = await uploadUpstreamImage(shop, order.id, 'fukuan', files.orderImage);
-  const screenshotShippingUrl = await uploadUpstreamImage(shop, order.id, 'daifahuo', files.shippingImage);
-  const upstreamSaveResult = await saveUpstreamDelivery(shop, order.id, trackingNo, carrier);
+  try {
+    if (!order.worker_phone) await claimOrder(shopId, { key, phone });
+    await validateUpstreamOrder(shop, order.id);
+    const screenshotOrderUrl = await uploadUpstreamImage(shop, order.id, 'fukuan', files.orderImage);
+    const screenshotShippingUrl = await uploadUpstreamImage(shop, order.id, 'daifahuo', files.shippingImage);
+    const upstreamSaveResult = await saveUpstreamDelivery(shop, order.id, trackingNo, carrier);
 
-  db.prepare(`
-    UPDATE orders SET
-      worker_phone = ?,
-      tracking_no = ?,
-      carrier = ?,
-      screenshot_order_url = ?,
-      screenshot_shipping_url = ?,
-      status = 'done',
-      synced_at = ?,
-      updated_at = ?
-    WHERE shop_id = ? AND id = ?
-  `).run(phone, trackingNo, carrier, screenshotOrderUrl, screenshotShippingUrl, now(), now(), shopId, order.id);
+    db.prepare(`
+      UPDATE orders SET
+        worker_phone = ?,
+        tracking_no = ?,
+        carrier = ?,
+        screenshot_order_url = ?,
+        screenshot_shipping_url = ?,
+        status = 'done',
+        synced_at = ?,
+        updated_at = ?
+      WHERE shop_id = ? AND id = ?
+    `).run(phone, trackingNo, carrier, screenshotOrderUrl, screenshotShippingUrl, now(), now(), shopId, order.id);
 
-  return { ok: true, screenshotOrderUrl, screenshotShippingUrl, upstreamSaveResult };
+    return { ok: true, screenshotOrderUrl, screenshotShippingUrl, upstreamSaveResult };
+  } catch (error) {
+    console.error('[worker/upload failed]', {
+      shopId,
+      orderId: order.id,
+      phone,
+      trackingNo,
+      carrier,
+      message: error.message,
+    });
+    throw error;
+  }
 }
 
 async function sendJson(res, status, data) {
