@@ -227,6 +227,14 @@ function listOrders(shopId) {
   return db.prepare('SELECT * FROM orders WHERE shop_id = ? ORDER BY CAST(id AS INTEGER) DESC, id DESC').all(shopId);
 }
 
+function listVisibleOrders(shopId) {
+  return db.prepare(`
+    SELECT * FROM orders
+    WHERE shop_id = ? AND status != 'removed'
+    ORDER BY CAST(id AS INTEGER) DESC, id DESC
+  `).all(shopId);
+}
+
 function getOrder(shopId, id) {
   return db.prepare('SELECT * FROM orders WHERE shop_id = ? AND id = ?').get(shopId, id);
 }
@@ -305,7 +313,8 @@ export async function syncUpstream(shopId = 'shop-a') {
   const shop = shopOrThrow(shopId);
   const upstream = await fetchUpstreamType4(shop);
   const rows = Array.isArray(upstream.dingdan) ? upstream.dingdan : [];
-  const localIds = new Set(listOrders(shopId).map((order) => order.id));
+  const localOrders = listOrders(shopId);
+  const localIds = new Set(localOrders.map((order) => order.id));
   const upstreamIds = new Set(rows.map((order) => String(order.id)));
   const update = db.prepare(`
     UPDATE orders SET
@@ -315,6 +324,21 @@ export async function syncUpstream(shopId = 'shop-a') {
       chanpingname = ?,
       type = ?,
       source = ?,
+      status = CASE WHEN status = 'removed' THEN 'pending' ELSE status END,
+      updated_at = ?
+    WHERE shop_id = ? AND id = ?
+  `);
+  const removeMissing = db.prepare(`
+    UPDATE orders
+    SET
+      worker_phone = '',
+      claimed_at = '',
+      tracking_no = '',
+      carrier = '',
+      screenshot_order_url = '',
+      screenshot_shipping_url = '',
+      synced_at = '',
+      status = 'removed',
       updated_at = ?
     WHERE shop_id = ? AND id = ?
   `);
@@ -341,7 +365,12 @@ export async function syncUpstream(shopId = 'shop-a') {
     updatedIds.push(order.id);
   }
 
-  const missingLocalIds = [...localIds].filter((id) => !upstreamIds.has(id));
+  const missingLocalIds = localOrders
+    .filter((order) => order.status !== 'removed' && !upstreamIds.has(order.id))
+    .map((order) => order.id);
+  for (const id of missingLocalIds) {
+    removeMissing.run(now(), shopId, id);
+  }
   const result = {
     at: now(),
     requestType: '4',
@@ -351,6 +380,7 @@ export async function syncUpstream(shopId = 'shop-a') {
     updated: updatedIds.length,
     skippedNewIds,
     missingLocalIds,
+    removedMissing: missingLocalIds.length,
     has28630: upstreamIds.has('28630'),
   };
   setMeta(shopId, 'lastSync', result);
@@ -867,7 +897,7 @@ export const server = createServer(async (req, res) => {
 
       if (req.method === 'GET' && route.action === 'worker/orders') {
         const phone = String(url.searchParams.get('phone') ?? '').trim();
-        const orders = listOrders(route.shopId)
+        const orders = listVisibleOrders(route.shopId)
           .filter((order) => !order.worker_phone || order.worker_phone === phone)
           .map((order) => ({
             ...rowToWorker(order),

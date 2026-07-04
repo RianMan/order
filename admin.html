@@ -217,6 +217,7 @@
       if (result.pendingCount !== undefined) parts.push(`待处理 ${result.pendingCount} 条`);
       if (result.imported !== undefined) parts.push(`导入 ${result.imported} 条`);
       if (result.updated !== undefined) parts.push(`更新 ${result.updated} 条`);
+      if (result.removedMissing !== undefined) parts.push(`剔除 ${result.removedMissing} 条`);
       if (result.skippedNewIds?.length) parts.push(`未新增 ${compactIds(result.skippedNewIds)}`);
       if (result.missingLocalIds?.length) parts.push(`本地缺失上游 ${compactIds(result.missingLocalIds)}`);
       if (result.upstreamSaveResult !== undefined) {
@@ -241,9 +242,9 @@
         const missing = compactIds(data.lastSync.missingLocalIds);
         $('notice').textContent = [
           '同步只按已有 id 更新，不新增。',
-          `上游 ${data.lastSync.upstreamRows ?? '-'} 条，更新 ${data.lastSync.updated ?? '-'} 条。`,
+          `上游 ${data.lastSync.upstreamRows ?? '-'} 条，更新 ${data.lastSync.updated ?? '-'} 条，剔除 ${data.lastSync.removedMissing ?? 0} 条。`,
           skipped ? `上游新 id 未新增：${skipped}` : '',
-          missing ? `本地有但上游本次没有：${missing}` : '',
+          missing ? `已从公共池剔除：${missing}` : '',
         ].filter(Boolean).join('\n');
       }
 
@@ -262,8 +263,8 @@
           <td>${order.screenshot_order_url ? '已上传' : '<span class="muted">未上传</span>'}</td>
           <td>${order.screenshot_shipping_url ? '已上传' : '<span class="muted">未上传</span>'}</td>
           <td>
-            <button class="small syncOrder" data-id="${esc(order.id)}" ${order.tracking_no ? '' : 'disabled'}>同步该订单</button>
-            <button class="small releaseOrder" data-id="${esc(order.id)}" ${order.worker_phone || order.status === 'done' || order.tracking_no || order.screenshot_order_url || order.screenshot_shipping_url ? '' : 'disabled'}>释放</button>
+            <button class="small syncOrder" data-id="${esc(order.id)}" ${order.tracking_no && order.status !== 'removed' ? '' : 'disabled'}>同步该订单</button>
+            <button class="small releaseOrder" data-id="${esc(order.id)}" ${order.status !== 'removed' && (order.worker_phone || order.status === 'done' || order.tracking_no || order.screenshot_order_url || order.screenshot_shipping_url) ? '' : 'disabled'}>释放</button>
           </td>
         </tr>
       `).join('');
