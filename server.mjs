@@ -226,6 +226,10 @@ function listOrders(shopId) {
   return db.prepare('SELECT * FROM orders WHERE shop_id = ? ORDER BY CAST(id AS INTEGER) DESC, id DESC').all(shopId);
 }
 
+function getOrder(shopId, id) {
+  return db.prepare('SELECT * FROM orders WHERE shop_id = ? AND id = ?').get(shopId, id);
+}
+
 function findByKey(shopId, key) {
   return listOrders(shopId).find((order) => orderKey(shopId, order.id) === key);
 }
@@ -432,26 +436,72 @@ async function uploadUpstreamImage(shop, id, type, file) {
   return text.startsWith('http') ? text : `https://img.lingmoucx.com/${text}?x-oss-process=image/resize,w_100/quality,q_90`;
 }
 
-async function saveUpstreamDelivery(shop, id, trackingNo, carrier) {
+async function saveUpstreamDelivery(shop, id, trackingNo, carrier, imageUrls = {}) {
+  const params = {
+    dingdan: trackingNo,
+    kuaidi: carrier,
+    userbeizhu: '',
+    id,
+    zhanghao: shop.user,
+  };
+  if (imageUrls.order) {
+    params.fukuan = imageUrls.order;
+    params.fukuanimg = imageUrls.order;
+    params.fukuan_img = imageUrls.order;
+  }
+  if (imageUrls.shipping) {
+    params.daifahuo = imageUrls.shipping;
+    params.daifahuoimg = imageUrls.shipping;
+    params.daifahuo_img = imageUrls.shipping;
+  }
+
   const response = await fetch(endpoints(shop).saveDelivery, {
     method: 'POST',
     headers: {
       ...commonHeaders(shop),
       'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
     },
-    body: new URLSearchParams({
-      dingdan: trackingNo,
-      kuaidi: carrier,
-      userbeizhu: '',
-      id,
-      zhanghao: shop.user,
-    }),
+    body: new URLSearchParams(params),
   });
   const text = (await response.text()).trim();
   if (!response.ok || ['400', '404', '444'].includes(text)) {
     throw new Error(`上游保存快递单号失败：${text || response.status}`);
   }
   return text;
+}
+
+async function syncOrderDataToUpstream(shopId, payload) {
+  const shop = shopOrThrow(shopId);
+  assertShopConfigured(shop);
+  const id = String(payload.id ?? '').trim();
+  if (!id) throw new Error('缺少订单 id');
+
+  const order = getOrder(shopId, id);
+  if (!order) throw new Error('订单不存在');
+  const trackingNo = String(order.tracking_no ?? '').trim();
+  const carrier = String(order.carrier ?? DEFAULT_CARRIER).trim() || DEFAULT_CARRIER;
+  if (!trackingNo) throw new Error('本地没有快递单号，不能同步上游');
+
+  await validateUpstreamOrder(shop, order.id);
+  const upstreamSaveResult = await saveUpstreamDelivery(shop, order.id, trackingNo, carrier, {
+    order: order.screenshot_order_url,
+    shipping: order.screenshot_shipping_url,
+  });
+  db.prepare(`
+    UPDATE orders
+    SET carrier = ?, synced_at = ?, updated_at = ?
+    WHERE shop_id = ? AND id = ?
+  `).run(carrier, now(), now(), shopId, order.id);
+
+  return {
+    ok: true,
+    id: order.id,
+    trackingNo,
+    carrier,
+    hasOrderImage: Boolean(order.screenshot_order_url),
+    hasShippingImage: Boolean(order.screenshot_shipping_url),
+    upstreamSaveResult,
+  };
 }
 
 async function readRequestBody(req) {
@@ -558,7 +608,10 @@ async function uploadWorkerScreenshots(shopId, req) {
     await validateUpstreamOrder(shop, order.id);
     const screenshotOrderUrl = await uploadUpstreamImage(shop, order.id, 'fukuan', files.orderImage);
     const screenshotShippingUrl = await uploadUpstreamImage(shop, order.id, 'daifahuo', files.shippingImage);
-    const upstreamSaveResult = await saveUpstreamDelivery(shop, order.id, trackingNo, carrier);
+    const upstreamSaveResult = await saveUpstreamDelivery(shop, order.id, trackingNo, carrier, {
+      order: screenshotOrderUrl,
+      shipping: screenshotShippingUrl,
+    });
 
     db.prepare(`
       UPDATE orders SET
@@ -733,6 +786,15 @@ export const server = createServer(async (req, res) => {
           return;
         }
         await sendJson(res, 200, await syncUpstream(route.shopId));
+        return;
+      }
+
+      if (req.method === 'POST' && route.action === 'sync-order-upstream') {
+        if (!isAdminAuthed(req)) {
+          await sendJson(res, 401, { error: '请先登录后台' });
+          return;
+        }
+        await sendJson(res, 200, await syncOrderDataToUpstream(route.shopId, await readJsonBody(req)));
         return;
       }
 

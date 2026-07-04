@@ -53,6 +53,11 @@
       border-color: #1267d8;
       color: #ffffff;
     }
+    button.small {
+      height: 30px;
+      padding: 0 10px;
+      font-size: 12px;
+    }
     button:disabled {
       opacity: 0.6;
       cursor: wait;
@@ -165,6 +170,7 @@
             <th>快递公司</th>
             <th>订单截图</th>
             <th>发货截图</th>
+            <th>操作</th>
           </tr>
         </thead>
         <tbody id="orders"></tbody>
@@ -213,6 +219,7 @@
       if (result.updated !== undefined) parts.push(`更新 ${result.updated} 条`);
       if (result.skippedNewIds?.length) parts.push(`未新增 ${compactIds(result.skippedNewIds)}`);
       if (result.missingLocalIds?.length) parts.push(`本地缺失上游 ${compactIds(result.missingLocalIds)}`);
+      if (result.upstreamSaveResult !== undefined) parts.push(`上游返回：${result.upstreamSaveResult || '空'}`);
       return parts.join('，');
     }
 
@@ -249,6 +256,7 @@
           <td>${esc(order.carrier)}</td>
           <td>${order.screenshot_order_url ? '已上传' : '<span class="muted">未上传</span>'}</td>
           <td>${order.screenshot_shipping_url ? '已上传' : '<span class="muted">未上传</span>'}</td>
+          <td><button class="small syncOrder" data-id="${esc(order.id)}" ${order.tracking_no ? '' : 'disabled'}>同步该订单</button></td>
         </tr>
       `).join('');
     }
@@ -281,6 +289,27 @@
       () => api(`${apiBase}/sync-upstream`, { method: 'POST' }),
       '正在按原始 type=4 同步上游'
     ));
+    $('orders').addEventListener('click', async (event) => {
+      const button = event.target.closest('.syncOrder');
+      if (!button) return;
+      button.disabled = true;
+      const oldText = button.textContent;
+      button.textContent = '同步中...';
+      $('notice').textContent = `正在同步订单 ${button.dataset.id} 到上游`;
+      try {
+        const result = await api(`${apiBase}/sync-order-upstream`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ id: button.dataset.id }),
+        });
+        $('notice').textContent = formatResult(`订单 ${button.dataset.id} 已同步到上游`, result);
+        await load();
+      } catch (error) {
+        $('notice').textContent = error.message;
+        button.disabled = false;
+        button.textContent = oldText;
+      }
+    });
 
     load().catch((error) => $('notice').textContent = error.message);
   </script>
