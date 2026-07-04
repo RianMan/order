@@ -105,7 +105,8 @@ function endpoints(shop) {
     list: `${shop.baseUrl}/user/index2apics.php`,
     validate: `${shop.baseUrl}/api/user/shixiaoyanzheng.php`,
     upload: `${shop.baseUrl}/user/upload.php`,
-    saveDelivery: `${shop.baseUrl}/api/user/dingdanbaocun.php`,
+    recognizeCarrier: `${shop.baseUrl}/api/user/kuaidishibie.php`,
+    realtimeSave: `${shop.baseUrl}/api/user/shishibaocun.php`,
     origin: shop.baseUrl,
     referer: `${shop.baseUrl}/user/index2.php`,
   };
@@ -433,41 +434,74 @@ async function uploadUpstreamImage(shop, id, type, file) {
   });
   const text = (await response.text()).trim();
   if (!response.ok || !text) throw new Error(`${type} 上传失败：${text || response.status}`);
-  return text.startsWith('http') ? text : `https://img.lingmoucx.com/${text}?x-oss-process=image/resize,w_100/quality,q_90`;
+  return {
+    raw: text,
+    url: text.startsWith('http') ? text : `https://img.lingmoucx.com/${text}?x-oss-process=image/resize,w_100/quality,q_90`,
+  };
 }
 
-async function saveUpstreamDelivery(shop, id, trackingNo, carrier, imageUrls = {}) {
-  const params = {
-    dingdan: trackingNo,
-    kuaidi: carrier,
-    userbeizhu: '',
-    id,
-    zhanghao: shop.user,
-  };
-  if (imageUrls.order) {
-    params.fukuan = imageUrls.order;
-    params.fukuanimg = imageUrls.order;
-    params.fukuan_img = imageUrls.order;
-  }
-  if (imageUrls.shipping) {
-    params.daifahuo = imageUrls.shipping;
-    params.daifahuoimg = imageUrls.shipping;
-    params.daifahuo_img = imageUrls.shipping;
-  }
-
-  const response = await fetch(endpoints(shop).saveDelivery, {
+async function saveUpstreamField(shop, id, type, data) {
+  const response = await fetch(endpoints(shop).realtimeSave, {
     method: 'POST',
     headers: {
       ...commonHeaders(shop),
       'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
     },
-    body: new URLSearchParams(params),
+    body: new URLSearchParams({
+      id,
+      data,
+      type,
+      user: shop.user,
+    }),
   });
   const text = (await response.text()).trim();
   if (!response.ok || ['400', '404', '444'].includes(text)) {
-    throw new Error(`上游保存快递单号失败：${text || response.status}`);
+    throw new Error(`上游保存 ${type} 失败：${text || response.status}`);
   }
   return text;
+}
+
+async function recognizeUpstreamCarrier(shop, id, trackingNo) {
+  const response = await fetch(endpoints(shop).recognizeCarrier, {
+    method: 'POST',
+    headers: {
+      ...commonHeaders(shop, 'application/json, text/javascript, */*; q=0.01'),
+      'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+    },
+    body: new URLSearchParams({
+      id,
+      danhao: trackingNo,
+      user: shop.user,
+    }),
+  });
+  const text = (await response.text()).trim();
+  if (!response.ok || !text) throw new Error(`上游识别快递失败：${text || response.status}`);
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
+
+async function saveUpstreamDelivery(shop, id, trackingNo, carrier, imageUrls = {}) {
+  const results = {};
+  results.tracking = await saveUpstreamField(shop, id, 'kddh1', trackingNo);
+  if (imageUrls.order) results.orderImage = await saveUpstreamField(shop, id, 'fukuan', imageUrls.order);
+  if (imageUrls.shipping) results.shippingImage = await saveUpstreamField(shop, id, 'daifahuo', imageUrls.shipping);
+  results.carrierRecognition = await recognizeUpstreamCarrier(shop, id, trackingNo);
+  return results;
+}
+
+function imageDataForUpstream(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  try {
+    const url = new URL(text);
+    if (url.hostname === 'img.lingmoucx.com') return url.pathname.replace(/^\/+/, '');
+  } catch {
+    // Already a relative OSS path.
+  }
+  return text.split('?')[0];
 }
 
 async function syncOrderDataToUpstream(shopId, payload) {
@@ -484,20 +518,21 @@ async function syncOrderDataToUpstream(shopId, payload) {
 
   await validateUpstreamOrder(shop, order.id);
   const upstreamSaveResult = await saveUpstreamDelivery(shop, order.id, trackingNo, carrier, {
-    order: order.screenshot_order_url,
-    shipping: order.screenshot_shipping_url,
+    order: imageDataForUpstream(order.screenshot_order_url),
+    shipping: imageDataForUpstream(order.screenshot_shipping_url),
   });
+  const recognizedCarrier = upstreamSaveResult.carrierRecognition?.kuaidi || carrier;
   db.prepare(`
     UPDATE orders
     SET carrier = ?, synced_at = ?, updated_at = ?
     WHERE shop_id = ? AND id = ?
-  `).run(carrier, now(), now(), shopId, order.id);
+  `).run(recognizedCarrier, now(), now(), shopId, order.id);
 
   return {
     ok: true,
     id: order.id,
     trackingNo,
-    carrier,
+    carrier: recognizedCarrier,
     hasOrderImage: Boolean(order.screenshot_order_url),
     hasShippingImage: Boolean(order.screenshot_shipping_url),
     upstreamSaveResult,
@@ -606,12 +641,13 @@ async function uploadWorkerScreenshots(shopId, req) {
   try {
     if (!order.worker_phone) await claimOrder(shopId, { key, phone });
     await validateUpstreamOrder(shop, order.id);
-    const screenshotOrderUrl = await uploadUpstreamImage(shop, order.id, 'fukuan', files.orderImage);
-    const screenshotShippingUrl = await uploadUpstreamImage(shop, order.id, 'daifahuo', files.shippingImage);
+    const screenshotOrder = await uploadUpstreamImage(shop, order.id, 'fukuan', files.orderImage);
+    const screenshotShipping = await uploadUpstreamImage(shop, order.id, 'daifahuo', files.shippingImage);
     const upstreamSaveResult = await saveUpstreamDelivery(shop, order.id, trackingNo, carrier, {
-      order: screenshotOrderUrl,
-      shipping: screenshotShippingUrl,
+      order: screenshotOrder.raw,
+      shipping: screenshotShipping.raw,
     });
+    const recognizedCarrier = upstreamSaveResult.carrierRecognition?.kuaidi || carrier;
 
     db.prepare(`
       UPDATE orders SET
@@ -624,9 +660,9 @@ async function uploadWorkerScreenshots(shopId, req) {
         synced_at = ?,
         updated_at = ?
       WHERE shop_id = ? AND id = ?
-    `).run(phone, trackingNo, carrier, screenshotOrderUrl, screenshotShippingUrl, now(), now(), shopId, order.id);
+    `).run(phone, trackingNo, recognizedCarrier, screenshotOrder.url, screenshotShipping.url, now(), now(), shopId, order.id);
 
-    return { ok: true, screenshotOrderUrl, screenshotShippingUrl, upstreamSaveResult };
+    return { ok: true, screenshotOrderUrl: screenshotOrder.url, screenshotShippingUrl: screenshotShipping.url, upstreamSaveResult };
   } catch (error) {
     console.error('[worker/upload failed]', {
       shopId,

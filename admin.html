@@ -219,7 +219,12 @@
       if (result.updated !== undefined) parts.push(`更新 ${result.updated} 条`);
       if (result.skippedNewIds?.length) parts.push(`未新增 ${compactIds(result.skippedNewIds)}`);
       if (result.missingLocalIds?.length) parts.push(`本地缺失上游 ${compactIds(result.missingLocalIds)}`);
-      if (result.upstreamSaveResult !== undefined) parts.push(`上游返回：${result.upstreamSaveResult || '空'}`);
+      if (result.upstreamSaveResult !== undefined) {
+        const upstreamText = typeof result.upstreamSaveResult === 'string'
+          ? result.upstreamSaveResult
+          : JSON.stringify(result.upstreamSaveResult);
+        parts.push(`上游返回：${upstreamText || '空'}`);
+      }
       return parts.join('，');
     }
 
