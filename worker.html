@@ -130,6 +130,10 @@
       min-height: 20px;
       text-align: right;
     }
+    .notice.error {
+      color: #b91c1c;
+      font-weight: 600;
+    }
     .grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -227,6 +231,16 @@
     .actions {
       display: grid;
       gap: 10px;
+    }
+    .card-notice {
+      min-height: 20px;
+      color: #526071;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .card-notice.error {
+      color: #b91c1c;
+      font-weight: 600;
     }
     .uploads {
       display: grid;
@@ -357,19 +371,19 @@
     <h1 id="title">订单领取上传</h1>
       <div class="login">
         <input id="phone" type="text" inputmode="numeric" placeholder="输入手机号">
-        <button class="primary" id="saveWorker">切换手机号</button>
+        <button type="button" class="primary" id="saveWorker">切换手机号</button>
       </div>
     </div>
   </header>
   <main>
     <div class="filters">
       <input id="search" type="search" placeholder="搜索姓名、电话、地址、商品">
-      <button id="refresh">刷新订单</button>
+      <button type="button" id="refresh">刷新订单</button>
       <div class="notice" id="notice"></div>
     </div>
     <div class="tabs">
-      <button class="tab active" data-tab="pool">公共订单</button>
-      <button class="tab" data-tab="mine">我的订单</button>
+      <button type="button" class="tab active" data-tab="pool">公共订单</button>
+      <button type="button" class="tab" data-tab="mine">我的订单</button>
     </div>
     <div class="grid" id="orders"></div>
   </main>
@@ -379,7 +393,7 @@
       <h2 id="phoneModalTitle">输入手机号</h2>
       <p>手机号用于领取订单和查看自己名下的订单。</p>
       <input id="modalPhone" type="text" inputmode="numeric" placeholder="请输入手机号">
-      <button class="primary" id="modalEnter">进入接单</button>
+      <button type="button" class="primary" id="modalEnter">进入接单</button>
     </div>
   </div>
 
@@ -410,6 +424,19 @@
 
     function setNotice(text) {
       $('notice').textContent = text;
+      $('notice').classList.remove('error');
+    }
+
+    function setError(text) {
+      $('notice').textContent = text;
+      $('notice').classList.add('error');
+    }
+
+    function setCardNotice(card, text, isError = false) {
+      const notice = card?.querySelector('.card-notice');
+      if (!notice) return;
+      notice.textContent = text;
+      notice.classList.toggle('error', isError);
     }
 
     function openPhoneModal() {
@@ -498,12 +525,12 @@
             </div>
             <div class="actions">
               ${echoHtml}
-              <button class="copy" data-copy="${esc(`${order.shouhuoname}\n${order.shouhuotel}\n${order.shouhuodizhi}\n${order.type}`)}">复制发货信息</button>
+              <button type="button" class="copy" data-copy="${esc(`${order.shouhuoname}\n${order.shouhuotel}\n${order.shouhuodizhi}\n${order.type}`)}">复制发货信息</button>
               <div class="form-grid">
                 <input class="trackingNo" type="text" placeholder="快递单号" value="${esc(order.trackingNo || '')}">
               </div>
-              ${order.mine || order.status === 'done' ? '' : `<button class="claim primary" data-key="${esc(order.key)}">领取到我名下</button>`}
-              ${order.mine && order.status !== 'done' ? `<button class="unclaim danger" data-key="${esc(order.key)}">撤回公共池</button>` : ''}
+              ${order.mine || order.status === 'done' ? '' : `<button type="button" class="claim primary" data-key="${esc(order.key)}">领取到我名下</button>`}
+              ${order.mine && order.status !== 'done' ? `<button type="button" class="unclaim danger" data-key="${esc(order.key)}">撤回公共池</button>` : ''}
               <div class="uploads">
                 <label class="filebox">
                   <span>订单截图</span>
@@ -514,7 +541,8 @@
                   <input class="shippingImage" type="file" accept="image/*" ${canUpload ? '' : 'disabled'}>
                 </label>
               </div>
-              <button class="upload success" data-key="${esc(order.key)}" ${canUpload ? '' : 'disabled'}>上传并同步</button>
+              <button type="button" class="upload success" data-key="${esc(order.key)}" ${canUpload ? '' : 'disabled'}>上传并同步</button>
+              <div class="card-notice"></div>
             </div>
           </section>
         `;
@@ -573,6 +601,7 @@
 
     async function upload(card, key) {
       const phone = requirePhone();
+      const button = card.querySelector('.upload');
       const trackingNo = card.querySelector('.trackingNo').value.trim();
       const orderImage = card.querySelector('.orderImage').files[0];
       const shippingImage = card.querySelector('.shippingImage').files[0];
@@ -587,9 +616,20 @@
       form.append('shippingImage', shippingImage);
 
       setNotice('正在上传并同步上游...');
-      await api(`${apiBase}/worker/upload`, { method: 'POST', body: form });
-      await load();
-      setNotice('上传完成，已同步上游');
+      setCardNotice(card, '正在上传并同步，请不要关闭页面...');
+      button.disabled = true;
+      button.textContent = '正在上传...';
+      try {
+        await api(`${apiBase}/worker/upload`, { method: 'POST', body: form });
+        setCardNotice(card, '上传完成，已同步上游');
+        await load();
+        setNotice('上传完成，已同步上游');
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = '上传并同步';
+        setCardNotice(card, error.message, true);
+        throw error;
+      }
     }
 
     async function copyText(text) {
@@ -613,14 +653,14 @@
       try {
         openPhoneModal();
       } catch (error) {
-        setNotice(error.message);
+        setError(error.message);
       }
     });
     $('modalEnter').addEventListener('click', async () => {
       try {
         await enterWithPhone($('modalPhone').value);
       } catch (error) {
-        setNotice(error.message);
+        setError(error.message);
         $('modalPhone').focus();
       }
     });
@@ -629,10 +669,10 @@
       try {
         await enterWithPhone($('modalPhone').value);
       } catch (error) {
-        setNotice(error.message);
+        setError(error.message);
       }
     });
-    $('refresh').addEventListener('click', () => load().catch((error) => setNotice(error.message)));
+    $('refresh').addEventListener('click', () => load().catch((error) => setError(error.message)));
     $('search').addEventListener('input', render);
     document.querySelectorAll('.tab').forEach((button) => {
       button.addEventListener('click', () => {
@@ -657,7 +697,9 @@
         if (unclaimButton) await unclaim(unclaimButton.closest('.card'), unclaimButton.dataset.key);
         if (uploadButton) await upload(uploadButton.closest('.card'), uploadButton.dataset.key);
       } catch (error) {
-        setNotice(error.message);
+        const card = event.target.closest('.card');
+        setCardNotice(card, error.message, true);
+        setError(error.message);
       }
     });
 
