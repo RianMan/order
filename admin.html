@@ -146,6 +146,7 @@
       <button id="refresh">刷新本地</button>
       <button id="importUpstream">从上游导入订单</button>
       <button class="primary" id="syncUpstream">同步上游 type=4</button>
+      <button id="syncCompleted">批量补同步已完成</button>
     </div>
     <div class="stats">
       <div class="stat"><span>本地订单</span><strong id="total">0</strong></div>
@@ -179,7 +180,7 @@
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
-    const buttons = [$('refresh'), $('importUpstream'), $('syncUpstream')];
+    const buttons = [$('refresh'), $('importUpstream'), $('syncUpstream'), $('syncCompleted')];
     const pathParts = location.pathname.split('/').filter(Boolean);
     const shopId = pathParts[0] === 'admin' && pathParts[1] ? pathParts[1] : 'shop-a';
     const apiBase = `/api/${shopId}`;
@@ -218,6 +219,9 @@
       if (result.imported !== undefined) parts.push(`导入 ${result.imported} 条`);
       if (result.updated !== undefined) parts.push(`更新 ${result.updated} 条`);
       if (result.removedMissing !== undefined) parts.push(`剔除 ${result.removedMissing} 条`);
+      if (result.total !== undefined) parts.push(`处理 ${result.total} 条`);
+      if (result.synced !== undefined) parts.push(`成功 ${result.synced} 条`);
+      if (result.failed?.length) parts.push(`失败 ${result.failed.length} 条：${result.failed.slice(0, 5).map((item) => `${item.id}:${item.error}`).join('；')}`);
       if (result.skippedNewIds?.length) parts.push(`未新增 ${compactIds(result.skippedNewIds)}`);
       if (result.missingLocalIds?.length) parts.push(`本地缺失上游 ${compactIds(result.missingLocalIds)}`);
       if (result.upstreamSaveResult !== undefined) {
@@ -297,6 +301,10 @@
     $('syncUpstream').addEventListener('click', () => run(
       () => api(`${apiBase}/sync-upstream`, { method: 'POST' }),
       '正在按原始 type=4 同步上游'
+    ));
+    $('syncCompleted').addEventListener('click', () => run(
+      () => api(`${apiBase}/sync-completed-upstream`, { method: 'POST' }),
+      '正在批量补同步已完成订单到上游'
     ));
     $('orders').addEventListener('click', async (event) => {
       const button = event.target.closest('.syncOrder, .releaseOrder');

@@ -515,10 +515,13 @@ async function recognizeUpstreamCarrier(shop, id, trackingNo) {
 
 async function saveUpstreamDelivery(shop, id, trackingNo, carrier, imageUrls = {}) {
   const results = {};
+  results.carrierRecognition = await recognizeUpstreamCarrier(shop, id, trackingNo);
+  const upstreamCarrier = results.carrierRecognition?.kuaidi || carrier || DEFAULT_CARRIER;
   results.tracking = await saveUpstreamField(shop, id, 'kddh1', trackingNo);
+  results.carrier = await saveUpstreamField(shop, id, 'kdgs', upstreamCarrier);
   if (imageUrls.order) results.orderImage = await saveUpstreamField(shop, id, 'fukuan', imageUrls.order);
   if (imageUrls.shipping) results.shippingImage = await saveUpstreamField(shop, id, 'daifahuo', imageUrls.shipping);
-  results.carrierRecognition = await recognizeUpstreamCarrier(shop, id, trackingNo);
+  results.savedCarrier = upstreamCarrier;
   return results;
 }
 
@@ -551,7 +554,7 @@ async function syncOrderDataToUpstream(shopId, payload) {
     order: imageDataForUpstream(order.screenshot_order_url),
     shipping: imageDataForUpstream(order.screenshot_shipping_url),
   });
-  const recognizedCarrier = upstreamSaveResult.carrierRecognition?.kuaidi || carrier;
+  const recognizedCarrier = upstreamSaveResult.savedCarrier || upstreamSaveResult.carrierRecognition?.kuaidi || carrier;
   db.prepare(`
     UPDATE orders
     SET carrier = ?, synced_at = ?, updated_at = ?
@@ -566,6 +569,30 @@ async function syncOrderDataToUpstream(shopId, payload) {
     hasOrderImage: Boolean(order.screenshot_order_url),
     hasShippingImage: Boolean(order.screenshot_shipping_url),
     upstreamSaveResult,
+  };
+}
+
+async function syncCompletedOrdersToUpstream(shopId) {
+  shopOrThrow(shopId);
+  const candidates = listOrders(shopId).filter((order) => (
+    order.status !== 'removed'
+    && order.tracking_no
+    && (order.screenshot_order_url || order.screenshot_shipping_url || order.status === 'done')
+  ));
+  const results = [];
+  const failed = [];
+  for (const order of candidates) {
+    try {
+      results.push(await syncOrderDataToUpstream(shopId, { id: order.id }));
+    } catch (error) {
+      failed.push({ id: order.id, error: error.message });
+    }
+  }
+  return {
+    ok: failed.length === 0,
+    total: candidates.length,
+    synced: results.length,
+    failed,
   };
 }
 
@@ -699,7 +726,7 @@ async function uploadWorkerScreenshots(shopId, req) {
       order: screenshotOrder.raw,
       shipping: screenshotShipping.raw,
     });
-    const recognizedCarrier = upstreamSaveResult.carrierRecognition?.kuaidi || carrier;
+    const recognizedCarrier = upstreamSaveResult.savedCarrier || upstreamSaveResult.carrierRecognition?.kuaidi || carrier;
 
     db.prepare(`
       UPDATE orders SET
@@ -883,6 +910,15 @@ export const server = createServer(async (req, res) => {
           return;
         }
         await sendJson(res, 200, await syncOrderDataToUpstream(route.shopId, await readJsonBody(req)));
+        return;
+      }
+
+      if (req.method === 'POST' && route.action === 'sync-completed-upstream') {
+        if (!isAdminAuthed(req)) {
+          await sendJson(res, 401, { error: '请先登录后台' });
+          return;
+        }
+        await sendJson(res, 200, await syncCompletedOrdersToUpstream(route.shopId));
         return;
       }
 
