@@ -22,6 +22,7 @@ const shopsConfig = JSON.parse(await readFile(SHOPS_CONFIG_PATH, 'utf8'));
 const shops = Object.fromEntries(
   Object.entries(shopsConfig).map(([id, config]) => [id, { id, ...config }]),
 );
+const invalidCarrierValues = new Set(['', '请选择', '其他']);
 
 const publicFields = ['shouhuoname', 'shouhuotel', 'shouhuodizhi', 'chanpingname', 'type'];
 const adminFields = [
@@ -516,7 +517,11 @@ async function recognizeUpstreamCarrier(shop, id, trackingNo) {
 async function saveUpstreamDelivery(shop, id, trackingNo, carrier, imageUrls = {}) {
   const results = {};
   results.carrierRecognition = await recognizeUpstreamCarrier(shop, id, trackingNo);
-  const upstreamCarrier = results.carrierRecognition?.kuaidi || carrier || DEFAULT_CARRIER;
+  const recognized = String(results.carrierRecognition?.kuaidi ?? '').trim();
+  const localCarrier = String(carrier ?? '').trim();
+  const upstreamCarrier = !invalidCarrierValues.has(recognized)
+    ? recognized
+    : (!invalidCarrierValues.has(localCarrier) ? localCarrier : (shop.defaultCarrier || DEFAULT_CARRIER));
   results.tracking = await saveUpstreamField(shop, id, 'kddh1', trackingNo);
   results.carrier = await saveUpstreamField(shop, id, 'kdgs', upstreamCarrier);
   if (imageUrls.order) results.orderImage = await saveUpstreamField(shop, id, 'fukuan', imageUrls.order);

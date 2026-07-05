@@ -9,6 +9,7 @@
     "name": "店铺",
     "baseUrl": "https://tg1si09kf3bv3uw0.lhxcx1.com",
     "user": "13155604459",
-    "cookie": "PHPSESSID=v36tpq8vdeopmus4pela7ksd38; uservip=13155604459"
+    "cookie": "PHPSESSID=v36tpq8vdeopmus4pela7ksd38; uservip=13155604459",
+    "defaultCarrier": "申通快递"
   }
 }
